@@ -2,10 +2,27 @@ import streamlit as st
 from openai import OpenAI
 import time
 import re
+import requests
 
 placeholderstr = "Please input your command"
 user_name = "Geli"
 user_image = "https://www.w3schools.com/howto/img_avatar.png"
+
+# Get access token
+CLIENT_ID = "b9e0979d54c449d4a1b7f23a1be1d329"
+CLIENT_SECRET = "03559d2dc6b643e8af412d5930ee4ec2"
+
+auth_url = "https://accounts.spotify.com/api/token"
+auth_response = requests.post(
+    auth_url,
+    data={"grant_type": "client_credentials"},
+    auth=(CLIENT_ID, CLIENT_SECRET)
+)
+
+# Extract the access token
+access_token = auth_response.json().get("access_token")
+if not access_token:
+    raise Exception("Failed to get Spotify access token")
 
 def stream_data(stream_str):
     for word in stream_str.split(" "):
@@ -26,7 +43,9 @@ def main():
     )
 
     # Show title and description.
-    st.title(f"💬 {user_name}'s Chatbot")
+    st.title(f"💬 {user_name}'s Lyricbot")
+    st.markdown("Welcome! 👋 This chatbot can get you lyrics from a Spotify playlist. Just paste a playlist link and I'll do the rest! 🎧")
+
 
     with st.sidebar:
         selected_lang = st.selectbox("Language", ["English", "繁體中文"], index=1)
@@ -62,12 +81,67 @@ def main():
                     st_c_chat.chat_message(msg["role"]).markdown((msg["content"]))
 
     def generate_response(prompt):
-        pattern = r'\b(i(\'?m| am| feel| think i(\'?)?m)?\s*(so\s+)?(stupid|ugly|dumb|idiot|worthless|loser|useless))\b'
-        if re.search(pattern, prompt, re.IGNORECASE):
-            return "Yes, you are!"
+        # Check if prompt is a Spotify playlist
+        if "open.spotify.com/playlist/" in prompt:
+            playlist_id = extract_playlist_id(prompt)
+
+            try:
+                tracks = get_playlist_tracks(access_token, playlist_id)
+                track_record = []
+
+                for track in tracks:
+                    artist = track["track"]["artists"][0]["name"]
+                    title = track["track"]["name"]
+                    lyrics = get_lyrics(artist, title)
+
+                    if lyrics:
+                        track_record.append((artist, title, lyrics))
+
+                if not track_record:
+                    return "No lyrics found for any songs in this playlist."
+
+                # Just return the first 3 songs for brevity
+                response = "Here's a sample of the lyrics I found:\n\n"
+                for artist, title, lyrics in track_record[:3]:
+                    response += f"**{title}** by *{artist}*\n\n{lyrics[:300]}...\n\n"
+
+                response += f"Total with lyrics: {len(track_record)} out of {len(tracks)}"
+                return response
+
+            except Exception as e:
+                return f"Oops! Failed to process playlist. Error: {e}"
+
         else:
-            return f"You say: {prompt}."
-        
+            return "Please send me a Spotify playlist link to fetch lyrics"
+
+    def extract_playlist_id(playlist_url):
+        return playlist_url.split("/")[-1].split("?")[0]
+
+    def get_lyrics(artist, title):
+        formatted_artist = artist.strip().lower().replace(" ", "%20")
+        formatted_title = title.strip().lower().replace(" ", "%20")
+
+        url = f"https://api.lyrics.ovh/v1/{formatted_artist}/{formatted_title}"
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            return response.json().get("lyrics")
+        else:
+            return None
+
+    def get_playlist_tracks(access_token, playlist_id):
+        headers = {"Authorization": f"Bearer {access_token}"}
+        url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+        tracks = []
+
+        while url:
+            response = requests.get(url, headers=headers)
+            data = response.json()
+            tracks.extend(data["items"])
+            url = data.get("next")
+
+        return tracks
+
     # Chat function section (timing included inside function)
     def chat(prompt: str):
         st_c_chat.chat_message("user",avatar=user_image).write(prompt)
