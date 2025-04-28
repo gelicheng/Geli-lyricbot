@@ -105,7 +105,7 @@ def run_chatbot():
 
     if prompt := st.chat_input(placeholder=placeholderstr, key="chat_bot"):
         chat(prompt)
-        
+
 def run_q1_plot():
     st.title("Q1-1: 2D and 3D Visualization of Lyrics")
     lyrics_input = st.text_area("Enter 10 lines of lyrics separated by periods (.)", key="q1_input")

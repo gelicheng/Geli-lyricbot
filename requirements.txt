@@ -2,3 +2,6 @@ streamlit
 openai
 autogen-agentchat
 autogen-ext[openai]
+plotly
+pca
+gensim
